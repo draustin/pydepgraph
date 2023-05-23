@@ -1,0 +1,20 @@
+[tool.poetry]
+name = "depgraph"
+version = "0.1.0"
+description = "Python static dependency graph generation and visualation."
+authors = ["Dane Austin <dane_austin@fastmail.com.au>"]
+license = "MIT"
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.9"
+networkx = "^3.1"
+pygraphviz = "^1.10"
+
+
+[tool.poetry.group.dev.dependencies]
+ipython = "^8.13.2"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

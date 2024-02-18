@@ -1,6 +1,8 @@
 import os.path
 import ast
 from dataclasses import dataclass
+from os import PathLike
+from pathlib import Path
 from typing import Iterable, Iterator, cast
 from pkgutil import iter_modules
 from importlib.machinery import FileFinder
@@ -41,18 +43,24 @@ def get_ast_imports(root: ast.AST) -> Iterator[Import]:
             yield Import(from_module, from_level, name.name, name.asname)
 
 
-def get_modules(roots: Iterable[str], base: str) -> Iterator[tuple[str, str | None]]:
+def get_modules(roots: Iterable[PathLike], base: str) -> Iterator[tuple[str, Path | None]]:
+    """_summary_
+
+    :param roots: _description_
+    :param base: _description_
+    :yield: Pairs of fully resolved module name (including base) and absolute path (i.e. to `__init__.py` for packages).
+    """    
     for module in iter_modules(roots):
         name = base + "." + module.name
         finder = cast(FileFinder, module.module_finder)
         if module.ispkg:
-            init_path = os.path.join(finder.path, module.name, "__init__.py")
-            if os.path.exists(init_path):
+            init_path = Path(finder.path) /  module.name / "__init__.py"
+            if init_path.exists():
                 path = init_path
             else:
                 path = None
         else:
-            path = os.path.join(finder.path, module.name + ".py")
+            path = Path(finder.path) /  (module.name + ".py")
 
         yield name, path
 
@@ -61,18 +69,12 @@ def get_modules(roots: Iterable[str], base: str) -> Iterator[tuple[str, str | No
                 [os.path.join(module.module_finder.path, module.name)], name
             )
 
-
-if __name__ == "__main__":
-    #import jedi as root_module
-    root_module_path = ["../otk/otk"]
-    root_module_name = "otk"
-
-    
+def create_graph(modules: Iterable[tuple[str, Path]]):
     graph = nx.DiGraph()
 
-    for name, path in get_modules(root_module_path, root_module_name):
+    for name, path in modules:
         graph.add_node(name, path=path)
-
+    
     skipped = []
     for name, data in graph.nodes(data=True):
         path = data["path"]
@@ -93,6 +95,25 @@ if __name__ == "__main__":
                     graph.add_edge(name, abs_imp.from_module)
                 else:
                     skipped.append((name, dep_name))
+    
+    return graph, skipped
+
+def flatten(graph: nx.DiGraph):
+    result = nx.DiGraph()
+    name: str
+    for name in graph.nodes:
+        result.add_node(name.split(".")[0])
+    for name, dep_name in graph.edges:        
+        result.add_edge(name.split(".")[0], dep_name.split(".")[0])
+    return result
+
+
+if __name__ == "__main__":
+    #import jedi as root_module
+    root_module_path = ["../otk/otk"]
+    root_module_name = "otk"
+
+    graph, skipped = create_graph(get_modules(root_module_path, root_module_name))
     
     #graph.graph["rankdir"] = "TB"  # This gives arrows pointing down.
     agraph = nx.nx_agraph.to_agraph(graph.reverse())

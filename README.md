@@ -9,3 +9,9 @@ Still might be useful to use Networkx initially to get e.g. topological generati
 So the layers (topoligical generations) should be subgraphs. Topics can be clusters.
 https://renenyffenegger.ch/notes/tools/Graphviz/elems/subgraph/index
 https://graphviz.org/doc/info/lang.html
+
+# Alternatives
+
+pydeps - primarily intended for command line usage. Complex.
+grimp - didn't work with modules as nodes, as is needed for namespace packages. Dev. environment required Rust.
+import-deps - not actively maintained, very basic. Might as well write own.

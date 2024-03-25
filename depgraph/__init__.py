@@ -43,44 +43,50 @@ def get_ast_imports(root: ast.AST) -> Iterator[Import]:
             yield Import(from_module, from_level, name.name, name.asname)
 
 
-def get_modules(roots: Iterable[PathLike], base: str) -> Iterator[tuple[str, Path | None]]:
+def get_modules(
+    roots: Iterable[Path | str], base: str | None = None
+) -> Iterator[tuple[str, Path | None]]:
     """_summary_
 
     :param roots: _description_
     :param base: _description_
     :yield: Pairs of fully resolved module name (including base) and absolute path (i.e. to `__init__.py` for packages).
-    """    
-    for module in iter_modules(roots):
-        name = base + "." + module.name
+    """
+    for module in iter_modules(str(root) for root in roots):
+        if base is None:
+            name = module.name
+        else:
+            name = base + "." + module.name
         finder = cast(FileFinder, module.module_finder)
         if module.ispkg:
-            init_path = Path(finder.path) /  module.name / "__init__.py"
+            init_path = Path(finder.path) / module.name / "__init__.py"
             if init_path.exists():
                 path = init_path
             else:
                 path = None
         else:
-            path = Path(finder.path) /  (module.name + ".py")
+            path = Path(finder.path) / (module.name + ".py")
 
         yield name, path
 
         if module.ispkg:
             yield from get_modules(
-                [os.path.join(module.module_finder.path, module.name)], name
+                [Path(cast(FileFinder, module.module_finder).path) / module.name], name
             )
+
 
 def create_graph(modules: Iterable[tuple[str, Path]]):
     graph = nx.DiGraph()
 
     for name, path in modules:
         graph.add_node(name, path=path)
-    
+
     skipped = []
     for name, data in graph.nodes(data=True):
         path = data["path"]
         if path is not None:
             try:
-                with open(path, "rt", encoding='utf8') as file:
+                with open(path, "rt", encoding="utf8") as file:
                     text = file.read()
             except Exception:
                 print(f"Error reading {path}.")
@@ -95,32 +101,50 @@ def create_graph(modules: Iterable[tuple[str, Path]]):
                     graph.add_edge(name, abs_imp.from_module)
                 else:
                     skipped.append((name, dep_name))
-    
+
     return graph, skipped
 
-def flatten(graph: nx.DiGraph):
+
+def pick(graph: nx.DiGraph, base_name: str):
+    base_name_split = base_name.split(".")
+
+    def match(name: str):
+        return name.split(".")[: len(base_name_split)] == base_name_split
+
+    sub = nx.subgraph(graph, [name for name in graph.nodes if match(name)])
+
+    def remove_base(name:str):
+        return ".".join(name.split(".")[len(base_name_split):]
+                        )
+    return nx.relabel_nodes(graph, remove_base)
+
+
+def get_top_level_graph(graph: nx.DiGraph):
+    """Given module dependency graph, get dependency graph of top-level modules."""
     result = nx.DiGraph()
     name: str
+    # Add all top-level modules.
     for name in graph.nodes:
         result.add_node(name.split(".")[0])
-    for name, dep_name in graph.edges:        
+    # Add dependencies between top-level modules.
+    for name, dep_name in graph.edges:
         result.add_edge(name.split(".")[0], dep_name.split(".")[0])
     return result
 
 
 if __name__ == "__main__":
-    #import jedi as root_module
+    # import jedi as root_module
     root_module_path = ["../otk/otk"]
     root_module_name = "otk"
 
-    graph, skipped = create_graph(get_modules(root_module_path, root_module_name))
-    
-    #graph.graph["rankdir"] = "TB"  # This gives arrows pointing down.
-    agraph = nx.nx_agraph.to_agraph(graph.reverse())
+    deep_graph, skipped = create_graph(get_modules(root_module_path, root_module_name))
+    picked = pick(deep_graph, "otk")
+    flat = get_top_level_graph(picked)
+
+    # graph.graph["rankdir"] = "TB"  # This gives arrows pointing down.
+    agraph = nx.nx_agraph.to_agraph(flat.reverse())
     agraph.graph_attr["rankdir"] = "BT"
-    #graph.graph[""]
+    # graph.graph[""]
     agraph.layout("dot")
-    agraph.draw("test.svg")
+    agraph.draw(root_module_name + ".svg")
     agraph.string()
-    
-    
